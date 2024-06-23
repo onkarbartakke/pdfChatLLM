@@ -26,8 +26,11 @@ with st.sidebar:
     st.write('Made with ❤️ by [Onkar Bartakke](https://www.linkedin.com/in/onkar-bartakke-9a45411a5/)')
  
 
+
+
 def main():
     st.header("Chat with PDF 💬: ")
+    load_dotenv()
 
     #upload a pdf file
     pdf = st.file_uploader("Upload your PDF", type='pdf')
@@ -40,7 +43,45 @@ def main():
         for page in pdf_reader.pages:
             text += page.extract_text()
         
-        st.write(text)
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size = 1000,
+            chunk_overlap = 200,
+            length_function = len
+        )
+
+        chunks = text_splitter.split_text(text = text)
+
+        #embeddings
+        store_name = pdf.name[:-4]
+        if os.path.exists(f"{store_name}.pkl"):
+            with open(f"{store_name}.pkl", "rb") as f:
+                VectorStore = pickle.load(f)
+            # st.write('Embeddings Loaded from the Disk')s
+        else:
+            embeddings = OpenAIEmbeddings()
+            VectorStore = FAISS.from_texts(chunks, embedding=embeddings)
+            with open(f"{store_name}.pkl", "wb") as f:
+                pickle.dump(VectorStore, f)
+ 
+        # embeddings = OpenAIEmbeddings()
+        # VectorStore = FAISS.from_texts(chunks, embedding=embeddings)
+ 
+        # Accept user questions/query
+        query = st.text_input("Ask questions about your PDF file:")
+        # st.write(query)
+ 
+        if query:
+            docs = VectorStore.similarity_search(query=query, k=3)
+ 
+            llm = OpenAI()
+            chain = load_qa_chain(llm=llm, chain_type="stuff")
+            with get_openai_callback() as cb:
+                response = chain.run(input_documents=docs, question=query)
+                print(cb)
+            st.write(response)
+
+
+        
 
 if __name__ == '__main__':
     main()
